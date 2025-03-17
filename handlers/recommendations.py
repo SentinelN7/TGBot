@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from services.database import *
 from handlers.menu import show_menu
 from services.game_api import fetch_game_details
+from services import game_card
 
 
 router = Router()
@@ -40,6 +41,8 @@ def generate_recommendation_menu(user_settings):
 
 @router.message(lambda msg: msg.text == "⭐ Рекомендации")
 async def recommendations_menu(message: Message, state: FSMContext):
+    update_last_activity(message.from_user.id)
+    update_user_state(message.from_user.id, "Recommendations")
     user_settings = get_user_profile(message.from_user.id)
 
     text, keyboard = generate_recommendation_menu(user_settings)
@@ -82,6 +85,7 @@ def get_recommendations_keyboard():
 async def show_recommendations(event: CallbackQuery | Message, state: FSMContext):
     """Показывает рекомендации пользователю."""
     user_id = event.from_user.id
+    update_last_activity(user_id)
     recommended_games = get_recommendations(user_id)
 
     user_settings = get_user_profile(user_id)
@@ -99,51 +103,12 @@ async def show_recommendations(event: CallbackQuery | Message, state: FSMContext
             await event.answer(message_text)
         return
 
-    game_ids = []
+    game_ids = [game[0] for game in recommended_games]  # Список ID игр
 
     for game in recommended_games:
-        game_id, title, release_date, genre, platforms, rating, cover_url = game
-        game_ids.append(game_id)
-
-        # Запрашиваем доп. данные об игре
-        game_details = await fetch_game_details(title)
-        developer = game_details.get("developer", "Не указано")
-        publisher = game_details.get("publisher", "Не указано")
-        slug = game_details.get("slug")
-        print(f"Игра: {title}, slug: {slug}")
-
-        text = (
-            f"<b>{title}</b>\n"
-            f"🛠 <b>Разработчик:</b> {developer}\n"
-            f"🏢 <b>Издатель:</b> {publisher}\n"
-            f"📅 <b>Дата релиза:</b> {release_date}\n"
-            f"🎮 <b>Жанр:</b> {genre}\n"
-            f"🖥 <b>Платформы:</b> {platforms}\n"
-            f"⭐ <b>Оценка:</b> {rating if rating else 'Нет'}\n\n"
-            "Для более детальной информации нажмите 'Подробнее'."
-        )
-
-        # Создаем клавиатуру
-        keyboard_buttons = []
-        if slug:
-            keyboard_buttons.append([InlineKeyboardButton(text="Подробнее", url=f"https://rawg.io/games/{slug}")])
-        keyboard_buttons.append([InlineKeyboardButton(text="Добавить в избранное", callback_data=f"favorite_{game_id}")])
-        keyboard_buttons.append([InlineKeyboardButton(text="Оценить", callback_data=f"rate_{game_id}")])
-        keyboard_buttons.append([InlineKeyboardButton(text="Неинтересно", callback_data=f"not_interested_{game_id}")])
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
-
-        # Отправляем сообщение
-        if isinstance(event, CallbackQuery):
-            if cover_url:
-                await event.message.answer_photo(photo=cover_url, caption=text, reply_markup=keyboard, parse_mode="HTML")
-            else:
-                await event.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-        else:
-            if cover_url:
-                await event.answer_photo(photo=cover_url, caption=text, reply_markup=keyboard, parse_mode="HTML")
-            else:
-                await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
+        game_id = game[0]
+        message = event.message if isinstance(event, CallbackQuery) else event
+        await game_card.show_game(message, game_id, from_recommendations=True)
 
     # Обновляем статус просмотра рекомендаций
     add_to_viewed_games(user_id, game_ids)
@@ -163,40 +128,6 @@ async def refresh_recommendations(message: Message, state: FSMContext):
     """Перезапрашивает рекомендации без удаления клавиатуры."""
     await show_recommendations(message, state)
 
-@router.callback_query(lambda c: c.data.startswith("not_interested_"))
-async def mark_not_interested(callback: CallbackQuery):
-    """Помечает игру как неинтересную и исключает из будущих рекомендаций"""
-    game_id = int(callback.data.split("_")[2])
-    user_id = callback.from_user.id
-
-    conn = connect_db()
-    cursor = conn.cursor()
-
-    # Проверяем, есть ли игра в избранном
-    cursor.execute(
-        "SELECT 1 FROM not_interested_games WHERE user_id = (SELECT id FROM users WHERE telegram_id = %s) AND game_id = %s",
-        (user_id, game_id))
-    already_favorited = cursor.fetchone()
-
-    # Получаем название игры
-    cursor.execute("SELECT title FROM games WHERE id = %s", (game_id,))
-    game_record = cursor.fetchone()
-    game_title = game_record[0]
-
-    if already_favorited:
-        await callback.message.answer(f"❌ Игра {game_title} уже помечена как неинтересная!")
-        conn.close()
-        return
-
-    # Добавляем в избранное
-    cursor.execute(
-        "INSERT INTO not_interested_games (user_id, game_id) VALUES ((SELECT id FROM users WHERE telegram_id = %s), %s)",
-        (user_id, game_id))
-    conn.commit()
-    conn.close()
-
-    await callback.message.answer(f"✅ Игра {game_title} больше не будет вам рекомендоваться!")
-    update_recommendations(user_id)
 
 OPTIONS = {
     "rec_count": [(str(i), f"{i} игр(а)") for i in range(1, 6)],
@@ -231,6 +162,7 @@ def generate_settings_keyboard(user_settings):
 async def show_settings_menu(callback: CallbackQuery):
     """Отображает меню изменения настроек рекомендаций."""
     user_settings = get_user_profile(callback.from_user.id)
+    update_last_activity(callback.from_user.id)
 
     await callback.message.edit_text(
         "🔧 *Выберите параметр для изменения:*",

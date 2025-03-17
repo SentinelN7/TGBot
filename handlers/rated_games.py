@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from services.database import get_rated_games, update_game_rating, remove_game_rating
+from services.database import get_rated_games, update_game_rating, remove_game_rating, update_last_activity, update_user_state
 from handlers.profile import ProfileState, show_profile
 
 router = Router()
@@ -11,6 +11,8 @@ router = Router()
 async def show_rated_games(callback: CallbackQuery, state: FSMContext):
     """Выводит список оцененных игр"""
     user_id = callback.from_user.id
+    update_last_activity(user_id)
+    update_user_state(user_id, "Rated games")
     rated_games = get_rated_games(user_id)
 
     if not rated_games:
@@ -41,6 +43,7 @@ def format_rated_games(rated_games):
 @router.callback_query(lambda c: c.data == "modify_rating")
 async def ask_game_number(callback: CallbackQuery, state: FSMContext):
     """Запрашивает у пользователя номер игры для изменения или удаления оценки"""
+    update_last_activity(callback.from_user.id)
     await callback.answer()
     await callback.message.answer("Введите номер игры, оценку которой хотите изменить:")
     await state.set_state(ProfileState.waiting_for_rating_change)

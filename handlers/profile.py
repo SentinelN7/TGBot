@@ -1,6 +1,6 @@
 from aiogram import Router, types
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardRemove
-from services.database import get_user_profile
+from services.database import get_user_profile, update_last_activity, update_user_state
 from aiogram.fsm.state import State, StatesGroup
 from handlers.start import start_command
 from handlers.menu import show_menu
@@ -22,6 +22,8 @@ class ProfileState(StatesGroup):
 async def show_profile(event: Message | CallbackQuery, state: FSMContext):
     """Показывает личный кабинет"""
     user_id = event.from_user.id
+    update_last_activity(user_id)
+    update_user_state(user_id, "Profile")
     user_data = get_user_profile(user_id)
     await state.set_state(ProfileState.main_profile_state)
 
@@ -56,6 +58,7 @@ async def show_profile(event: Message | CallbackQuery, state: FSMContext):
 async def edit_survey(callback: CallbackQuery, state: FSMContext):
     """Запускает повторное прохождение анкеты с обновлением данных."""
     user_id = callback.from_user.id
+    update_last_activity(user_id)
     user_info = get_user_profile(user_id)
 
     if user_info:

@@ -7,6 +7,8 @@ from config import TOKEN
 from handlers import start, profile, search, favorites, rated_games, not_interested, recommendations, menu
 from handlers.menu import show_menu
 from services.update_games import start_scheduled_updates
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from services.scheduler import check_inactive_users
 
 
 async def reset_state(message: Message, state: FSMContext):
@@ -32,6 +34,10 @@ async def main():
 
     # Регистрация команды /reset
     dp.message.register(reset_state, Command("reset"))
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(check_inactive_users, "interval", minutes=10, args=[bot, dp])
+    scheduler.start()
 
     await start_scheduled_updates()
     await dp.start_polling(bot)

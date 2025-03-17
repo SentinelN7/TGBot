@@ -2,7 +2,7 @@ from aiogram import Router
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from services.database import get_favorite_games, remove_favorite_game
+from services.database import get_favorite_games, remove_favorite_game, update_last_activity, update_user_state
 from handlers.profile import ProfileState, show_profile
 
 router = Router()
@@ -11,6 +11,8 @@ router = Router()
 async def show_favorites(callback: CallbackQuery, state: FSMContext):
     """Выводит список избранных игр"""
     user_id = callback.from_user.id
+    update_last_activity(user_id)
+    update_user_state(user_id, "Favorite games")
     favorite_games = get_favorite_games(user_id)
 
     if not favorite_games:
@@ -41,6 +43,7 @@ def format_favorite_games(favorite_games):
 @router.callback_query(lambda c: c.data == "remove_favorite_game")
 async def ask_game_number(callback: CallbackQuery, state: FSMContext):
     """Запрашивает у пользователя номер игры для удаления"""
+    update_last_activity(callback.from_user.id)
     await callback.answer()
     await callback.message.answer("Введите номер игры, которую хотите удалить:")
     await state.set_state(ProfileState.waiting_for_game_number)

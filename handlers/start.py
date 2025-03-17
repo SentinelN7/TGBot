@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from services.database import save_survey, get_user_profile, update_recommendations, user_exists
+from services.database import save_survey, get_user_profile, update_recommendations, user_exists, update_user_state
 from handlers.menu import show_menu
 
 router = Router()
@@ -35,6 +35,7 @@ def generate_survey_keyboard(user_id):
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, edit: bool = False):
     user_id = message.from_user.id
+    update_user_state(user_id, "Survey")
 
     if not edit and user_exists(user_id):
         username = message.from_user.first_name
@@ -124,6 +125,7 @@ async def finish_survey(callback: CallbackQuery):
 
     # Автоматически показываем меню после завершения анкеты
     await show_menu(callback.message)
+    update_user_state(user_id, "Main Menu")
 
 def register_handlers(dp):
     dp.include_router(router)

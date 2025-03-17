@@ -515,3 +515,17 @@ def remove_from_recommendations(user_id, game_ids):
     conn.commit()
     conn.close()
 
+def update_last_activity(user_id):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET last_activity = NOW() WHERE telegram_id = %s", (user_id,))
+    conn.commit()
+    conn.close()
+
+
+def update_user_state(user_id, state: str):
+    conn = connect_db()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET current_state = %s WHERE telegram_id = %s", (state, user_id))
+    conn.commit()
+    conn.close()
