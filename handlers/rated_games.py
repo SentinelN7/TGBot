@@ -9,7 +9,6 @@ router = Router()
 
 @router.callback_query(lambda c: c.data == "rated_games")
 async def show_rated_games(callback: CallbackQuery, state: FSMContext):
-    """Выводит список оцененных игр"""
     user_id = callback.from_user.id
     update_last_activity(user_id)
     update_user_state(user_id, "Rated games")
@@ -30,8 +29,7 @@ async def show_rated_games(callback: CallbackQuery, state: FSMContext):
 
 
 def format_rated_games(rated_games):
-    """Форматирует список оцененных игр"""
-    sorted_games = sorted(rated_games, key=lambda x: x[1])  # Сортируем по названию
+    sorted_games = sorted(rated_games, key=lambda x: x[1])
     text = "⭐ *Оцененные вами игры:*\n\n"
 
     for i, (_, game_name, rating) in enumerate(sorted_games, start=1):
@@ -42,7 +40,6 @@ def format_rated_games(rated_games):
 
 @router.callback_query(lambda c: c.data == "modify_rating")
 async def ask_game_number(callback: CallbackQuery, state: FSMContext):
-    """Запрашивает у пользователя номер игры для изменения или удаления оценки"""
     update_last_activity(callback.from_user.id)
     await callback.answer()
     await callback.message.answer("Введите номер игры, оценку которой хотите изменить:")
@@ -51,7 +48,6 @@ async def ask_game_number(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ProfileState.waiting_for_rating_change)
 async def modify_rating(message: Message, state: FSMContext):
-    """Изменяет или удаляет оценку игры"""
     user_id = message.from_user.id
     rated_games = get_rated_games(user_id)
 
@@ -60,7 +56,6 @@ async def modify_rating(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Сортируем список так же, как в format_rated_games
     sorted_games = sorted(rated_games, key=lambda x: x[1])
 
     try:
@@ -72,7 +67,7 @@ async def modify_rating(message: Message, state: FSMContext):
         await message.answer("❌ Введите число, соответствующее номеру игры.")
         return
 
-    game_id, game_name, _ = sorted_games[game_index]  # Теперь индекс соответствует списку
+    game_id, game_name, _ = sorted_games[game_index]
     await state.update_data(selected_game_id=game_id, selected_game_name=game_name)
     await message.answer(f"Введите новую оценку для игры «{game_name}» (от 1 до 10) или 0 для удаления:")
     await state.set_state(ProfileState.waiting_for_new_rating)
@@ -80,7 +75,6 @@ async def modify_rating(message: Message, state: FSMContext):
 
 @router.message(ProfileState.waiting_for_new_rating)
 async def set_new_rating(message: Message, state: FSMContext):
-    """Устанавливает новую оценку или удаляет игру из списка оцененных"""
     user_id = message.from_user.id
     data = await state.get_data()
     game_id = data.get("selected_game_id")
@@ -102,16 +96,15 @@ async def set_new_rating(message: Message, state: FSMContext):
         update_game_rating(user_id, game_id, new_rating)
         action_text = f"обновлена до {new_rating}/10."
 
-    # Удаляем последнее сообщение со списком оцененных игр
     last_message_id = data.get("last_rated_message")
     if last_message_id:
         try:
             await message.chat.delete_message(last_message_id)
         except Exception:
-            pass  # Игнорируем ошибку, если сообщение уже удалено
+            pass
 
     await message.answer(f"✅ *Оценка игры «{game_name}» {action_text}*", parse_mode="Markdown")
-    await show_profile(message, state)  # Возвращаемся в личный кабинет
+    await show_profile(message, state)
 
 
 def register_handlers(dp):

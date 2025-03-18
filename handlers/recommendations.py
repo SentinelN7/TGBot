@@ -16,7 +16,6 @@ class RecommendationState(StatesGroup):
     viewing = State()
 
 def generate_recommendation_menu(user_settings):
-    """Создаёт меню с текущими настройками и кнопками изменения."""
     text = (
         "⭐ *Добро пожаловать в меню рекомендаций!* ⭐\n\n"
         "Не знаете, во что поиграть? Мы подберем для вас лучшие варианты!\n"
@@ -49,7 +48,7 @@ async def recommendations_menu(message: Message, state: FSMContext):
 
     temp1 = await message.answer("🔄 Подглядываем в ваши рекомендации, секунду...",
                          reply_markup=ReplyKeyboardMarkup(keyboard=[[]], resize_keyboard=True))
-    await asyncio.sleep(0.5)  # Даём Telegram Web обновить клавиатуру
+    await asyncio.sleep(0.5)
     await temp1.delete()
     temp2 = await message.answer("✅ Готово", reply_markup=ReplyKeyboardRemove())
     await temp2.delete()
@@ -59,18 +58,17 @@ async def recommendations_menu(message: Message, state: FSMContext):
 @router.message(lambda msg: msg.text == "🔙 Вернуться в главное меню")
 @router.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(event: CallbackQuery | Message, state: FSMContext):
-    """Удаляет сообщение (если нужно) и возвращает пользователя в главное меню."""
     await state.clear()
+    update_user_state(event.from_user.id, "Main Menu")
 
     if isinstance(event, CallbackQuery):
-        await event.message.delete()  # Удаляем сообщение, если вызов через CallbackQuery
+        await event.message.delete()
         await show_menu(event.message)
     else:
-        await show_menu(event)  # Если это Message, просто показываем меню
+        await show_menu(event)
 
 
 def get_recommendations_keyboard():
-    """Создаёт клавиатуру для управления рекомендациями."""
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔄 Получить новые рекомендации")],
@@ -83,13 +81,11 @@ def get_recommendations_keyboard():
 @router.callback_query(lambda c: c.data == "get_recommendations")
 @router.message(RecommendationState.viewing, lambda msg: msg.text == "🔄 Получить новые рекомендации")
 async def show_recommendations(event: CallbackQuery | Message, state: FSMContext):
-    """Показывает рекомендации пользователю."""
     user_id = event.from_user.id
     update_last_activity(user_id)
-    recommended_games = get_recommendations(user_id)
-
     user_settings = get_user_profile(user_id)
     rec_count = user_settings.get("rec_count", 3)
+    recommended_games = get_recommendations(user_id, rec_count)
 
     if len(recommended_games) < rec_count:
         update_recommendations(user_id)
@@ -103,19 +99,17 @@ async def show_recommendations(event: CallbackQuery | Message, state: FSMContext
             await event.answer(message_text)
         return
 
-    game_ids = [game[0] for game in recommended_games]  # Список ID игр
+    game_ids = [game[0] for game in recommended_games]
 
     for game in recommended_games:
         game_id = game[0]
         message = event.message if isinstance(event, CallbackQuery) else event
-        await game_card.show_game(message, game_id, from_recommendations=True)
+        await game_card.show_game_message(message, game_id, from_recommendations=True)
 
-    # Обновляем статус просмотра рекомендаций
     add_to_viewed_games(user_id, game_ids)
     remove_from_recommendations(user_id, game_ids)
     await state.set_state(RecommendationState.viewing)
 
-    # Отправляем сообщение о выборе игры
     final_message = "📌 Выбрали что-нибудь?"
     if isinstance(event, CallbackQuery):
         await event.message.answer(final_message, reply_markup=get_recommendations_keyboard())
@@ -125,7 +119,6 @@ async def show_recommendations(event: CallbackQuery | Message, state: FSMContext
 
 @router.message(RecommendationState.viewing, lambda msg: msg.text == "🔄 Получить новые рекомендации")
 async def refresh_recommendations(message: Message, state: FSMContext):
-    """Перезапрашивает рекомендации без удаления клавиатуры."""
     await show_recommendations(message, state)
 
 
@@ -137,9 +130,7 @@ OPTIONS = {
 
 
 def generate_settings_keyboard(user_settings):
-    """Создаёт клавиатуру настроек рекомендаций с русскими значениями."""
 
-    # Карта перевода значений из БД в русские подписи
     TRANSLATE = {
         "never": "Отключить",
         "daily": "Ежедневно",
@@ -160,7 +151,6 @@ def generate_settings_keyboard(user_settings):
 
 @router.callback_query(lambda c: c.data == "recommendations_settings")
 async def show_settings_menu(callback: CallbackQuery):
-    """Отображает меню изменения настроек рекомендаций."""
     user_settings = get_user_profile(callback.from_user.id)
     update_last_activity(callback.from_user.id)
 
@@ -172,7 +162,6 @@ async def show_settings_menu(callback: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("edit_"))
 async def edit_setting(callback: CallbackQuery):
-    """Предлагает пользователю выбрать новое значение для параметра рекомендаций."""
     param = callback.data.replace("edit_", "")
 
     if param not in OPTIONS:
@@ -188,14 +177,10 @@ async def edit_setting(callback: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("set_"))
 async def update_setting(callback: CallbackQuery):
-    """Обновляет настройку пользователя и возвращает его в меню настроек."""
     user_id = callback.from_user.id
-    _, param_value = callback.data.split("_", maxsplit=1)  # Убираем "set_"
+    _, param_value = callback.data.split("_", maxsplit=1)
 
-    # Отделяем param от value: param - всё до последнего "_", value - после
     param, _, value = param_value.rpartition("_")
-
-    print(f"Изменяем параметр: {param}, Новое значение: {value}")
 
     if param in {"rec_count", "notif_count"}:
         try:
@@ -215,16 +200,15 @@ async def update_setting(callback: CallbackQuery):
 @router.message(lambda msg: msg.text == "📌 Вернуться в меню рекомендаций")
 @router.callback_query(lambda c: c.data == "back_to_recommendations")
 async def back_to_recommendations(event: CallbackQuery | Message, state: FSMContext):
-    """Возвращает пользователя в меню рекомендаций и скрывает кнопки из показа рекомендаций."""
     await state.clear()
     user_settings = get_user_profile(event.from_user.id)
     text, keyboard = generate_recommendation_menu(user_settings)
 
     if isinstance(event, CallbackQuery):
-        await event.message.answer("🔄 Переход в меню рекомендаций", reply_markup=ReplyKeyboardRemove())
+        await event.message.answer("Переход в меню рекомендаций", reply_markup=ReplyKeyboardRemove())
         await event.message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
     else:
-        await event.answer("🔄 Переход в меню рекомендаций", reply_markup=ReplyKeyboardRemove())
+        await event.answer("Переход в меню рекомендаций", reply_markup=ReplyKeyboardRemove())
         await event.answer(text, reply_markup=keyboard, parse_mode="Markdown")
 
 

@@ -14,7 +14,6 @@ class SearchGame(StatesGroup):
     waiting_for_search_query = State()
     waiting_for_game_selection = State()
 
-# Клавиатуры
 search_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🔄 Поиск новой игры")],
@@ -45,12 +44,12 @@ async def start_search(message: Message, state: FSMContext):
 
 @router.message(lambda msg: msg.text == "🔄 Поиск новой игры")
 async def restart_search(message: Message, state: FSMContext):
-    """Повторный поиск игры без вводного сообщения."""
     await start_new_search(message, state)
 
 @router.message(lambda msg: msg.text == "🔙 Вернуться в главное меню")
 async def exit_search_mode(message: Message, state: FSMContext):
     await state.clear()
+    update_user_state(message.from_user.id, "Main Menu")
     await show_menu(message)
 
 async def start_new_search(message: Message, state: FSMContext):
@@ -60,7 +59,6 @@ async def start_new_search(message: Message, state: FSMContext):
 
 @router.message(SearchGame.waiting_for_search_query)
 async def process_search(message: Message, state: FSMContext):
-    """Обрабатывает поиск игры"""
     search_query = message.text.strip().lower()
 
     try:
@@ -82,7 +80,7 @@ async def process_search(message: Message, state: FSMContext):
 
         if len(games) == 1:
             game_id, game_title = games[0]
-            await show_game_info(message, game_id)
+            await game_card.show_game_message(message, game_id)
             await state.clear()
             return
 
@@ -110,7 +108,7 @@ async def select_game(message: Message, state: FSMContext):
         return
 
     game_id = game_options[message.text]
-    await game_card.show_game(message, game_id)
+    await game_card.show_game_message(message, game_id)
     await state.clear()
 
 

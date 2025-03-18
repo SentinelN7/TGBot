@@ -9,7 +9,6 @@ router = Router()
 
 @router.callback_query(lambda c: c.data == "not_interested")
 async def show_not_interested(callback: CallbackQuery, state: FSMContext):
-    """Выводит список неинтересных игр"""
     user_id = callback.from_user.id
     update_last_activity(user_id)
     update_user_state(user_id, "Not interesting games")
@@ -30,8 +29,7 @@ async def show_not_interested(callback: CallbackQuery, state: FSMContext):
 
 
 def format_not_interested_games(not_interested_games):
-    """Форматирует список неинтересных игр в алфавитном порядке"""
-    sorted_games = sorted(not_interested_games, key=lambda x: x[1])  # Сортируем по названию
+    sorted_games = sorted(not_interested_games, key=lambda x: x[1])
     text = "🚫 *Неинтересные игры:*\n\n"
 
     for i, (_, game_name) in enumerate(sorted_games, start=1):
@@ -42,7 +40,6 @@ def format_not_interested_games(not_interested_games):
 
 @router.callback_query(lambda c: c.data == "remove_not_interested_game")
 async def ask_game_number(callback: CallbackQuery, state: FSMContext):
-    """Запрашивает у пользователя номер игры для удаления"""
     update_last_activity(callback.from_user.id)
     await callback.answer()
     await callback.message.answer("Введите номер игры, которую хотите удалить:")
@@ -51,7 +48,6 @@ async def ask_game_number(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ProfileState.waiting_for_not_interested_game_number)
 async def remove_game(message: Message, state: FSMContext):
-    """Удаляет игру из списка неинтересных по введенному номеру"""
     user_id = message.from_user.id
     not_interested_games = get_not_interested_games(user_id)
 
@@ -60,7 +56,6 @@ async def remove_game(message: Message, state: FSMContext):
         await state.clear()
         return
 
-    # Сортируем список так же, как в format_not_interested_games
     sorted_games = sorted(not_interested_games, key=lambda x: x[1])
 
     try:
@@ -72,10 +67,9 @@ async def remove_game(message: Message, state: FSMContext):
         await message.answer("❌ Введите число, соответствующее номеру игры.")
         return
 
-    game_id, game_name = sorted_games[game_index]  # Теперь индекс соответствует списку
+    game_id, game_name = sorted_games[game_index]
     remove_not_interested_game(user_id, game_id)
 
-    # Удаляем последнее сообщение со списком неинтересных игр
     data = await state.get_data()
     last_message_id = data.get("last_not_interested_message")
 
@@ -83,11 +77,11 @@ async def remove_game(message: Message, state: FSMContext):
         try:
             await message.chat.delete_message(last_message_id)
         except Exception:
-            pass  # Игнорируем ошибку, если сообщение уже удалено
+            pass
 
     await message.answer(f"✅ *Игра «{game_name}» удалена из списка неинтересных.*", parse_mode="Markdown")
     update_recommendations(user_id)
-    await show_profile(message, state)  # Возвращаемся в личный кабинет
+    await show_profile(message, state)
 
 
 def register_handlers(dp):

@@ -8,20 +8,16 @@ from handlers.menu import show_menu
 
 router = Router()
 
-# Словарь для хранения данных пользователей (пока в оперативной памяти)
 user_data = {}
 
-# Доступные платформы и жанры
 PLATFORMS = ["PlayStation 5", "PlayStation 4", "PlayStation 3", "Xbox Series X/S", "Xbox One", "Xbox 360", "PC", "Nintendo Switch"]
 GENRES = ["Action", "RPG", "Shooter", "Strategy", "Simulator", "Arcade", "Fighting", "Adventure", "Puzzle"]
 
-# Определение состояний анкеты
 class SurveyStates(StatesGroup):
     choosing_platform = State()
     choosing_genre = State()
     entering_favorite_games = State()
 
-# Функция генерации главного меню анкеты
 def generate_survey_keyboard(user_id):
     data = user_data.get(user_id, {"platform": "не выбрано", "genre": "не выбрано", "games": "не указаны"})
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -123,7 +119,6 @@ async def finish_survey(callback: CallbackQuery):
     await callback.message.delete()
     await callback.message.answer(text)
 
-    # Автоматически показываем меню после завершения анкеты
     await show_menu(callback.message)
     update_user_state(user_id, "Main Menu")
 

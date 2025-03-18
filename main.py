@@ -6,23 +6,20 @@ from aiogram.filters import Command
 from config import TOKEN
 from handlers import start, profile, search, favorites, rated_games, not_interested, recommendations, menu
 from handlers.menu import show_menu
-from services.update_games import start_scheduled_updates
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from services.scheduler import check_inactive_users
+from services.scheduler import check_inactive_users, send_scheduled_recommendations, update_game_database, clear_viewed_games
 
 
 async def reset_state(message: Message, state: FSMContext):
-    """Сбрасывает состояние пользователя и отправляет в главное меню"""
-    await state.clear()  # Сбрасываем состояние
+    await state.clear()
     await message.answer("🔄 *Состояние сброшено. Возвращаем вас в главное меню...*")
-    await menu.show_menu(message)  # Показываем главное меню
+    await menu.show_menu(message)
 
 
 async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
-    # Регистрация обработчиков
     start.register_handlers(dp)
     profile.register_handlers(dp)
     search.register_handlers(dp)
@@ -37,9 +34,11 @@ async def main():
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(check_inactive_users, "interval", minutes=10, args=[bot, dp])
+    scheduler.add_job(send_scheduled_recommendations, "interval", hours=1, kwargs={"bot": bot})
+    scheduler.add_job(update_game_database, 'interval', days=7)
+    scheduler.add_job(clear_viewed_games, "interval", days=3)
     scheduler.start()
 
-    await start_scheduled_updates()
     await dp.start_polling(bot)
 
 

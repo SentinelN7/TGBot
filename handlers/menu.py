@@ -5,7 +5,6 @@ from services.database import update_user_state, update_last_activity
 
 router = Router()
 
-# Клавиатура для главного меню
 menu_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🔍 Поиск игры")],
@@ -35,7 +34,6 @@ async def show_menu(message: Message, bot: Bot | None = None):
 
 @router.message()
 async def delete_unwanted_messages(message: Message):
-    """Удаляет любое сообщение, отправленное в меню"""
     await message.delete()
 
 def register_handlers(dp):

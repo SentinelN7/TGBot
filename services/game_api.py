@@ -24,7 +24,7 @@ async def fetch_games(session, platform_id, page):
         "key": RAWG_API_KEY,
         "platforms": platform_id,
         "page": page,
-        "page_size": 20  # Максимум 20 игр за раз
+        "page_size": 20
     }
 
     async with session.get(BASE_URL, params=params) as response:
@@ -66,16 +66,15 @@ async def get_all_games():
 
                     game_count += 1
                     if game_count >= 4500:
-                        break  # Достигли лимита
+                        break
 
-                page += 1  # Переходим на следующую страницу
+                page += 1
 
     print("✅ База данных обновлена!")
 
 async def fetch_game_details(title: str):
     """Ищет игру по названию, получает её ID и загружает подробную информацию."""
     async with aiohttp.ClientSession() as session:
-        # 1. Поиск игры по названию
         search_url = f"https://api.rawg.io/api/games?key={RAWG_API_KEY}&search={title}"
         async with session.get(search_url) as search_response:
             if search_response.status != 200:
@@ -87,10 +86,8 @@ async def fetch_game_details(title: str):
                 logging.warning(f"Игра '{title}' не найдена.")
                 return None
 
-            # Берём первый результат
             game_id = search_data["results"][0]["id"]
 
-        # 2. Запрашиваем данные по ID
         game_url = f"https://api.rawg.io/api/games/{game_id}?key={RAWG_API_KEY}"
         async with session.get(game_url) as response:
             if response.status != 200:
@@ -98,7 +95,6 @@ async def fetch_game_details(title: str):
                 return None
             data = await response.json()
 
-    # Обрабатываем результат (тут нет "results", это уже один объект)
     return {
         "developer": data.get("developers", [{"name": "Не указано"}])[0]["name"],
         "publisher": data.get("publishers", [{"name": "Не указано"}])[0]["name"],

@@ -20,7 +20,6 @@ class ProfileState(StatesGroup):
 @router.message(lambda msg: msg.text == "🎮 Личный кабинет")
 @router.callback_query(lambda c: c.data == "back_to_profile")
 async def show_profile(event: Message | CallbackQuery, state: FSMContext):
-    """Показывает личный кабинет"""
     user_id = event.from_user.id
     update_last_activity(user_id)
     update_user_state(user_id, "Profile")
@@ -45,7 +44,7 @@ async def show_profile(event: Message | CallbackQuery, state: FSMContext):
         ])
 
         if isinstance(event, Message):
-            await event.bot.send_message(event.chat.id, "🔄 Открываем ваш профиль, секунду...",
+            await event.bot.send_message(event.chat.id, "Открываем ваш профиль, секунду...",
                                          reply_markup=ReplyKeyboardRemove())
             await event.bot.send_message(event.chat.id, text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -56,7 +55,6 @@ async def show_profile(event: Message | CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data == "edit_survey")
 async def edit_survey(callback: CallbackQuery, state: FSMContext):
-    """Запускает повторное прохождение анкеты с обновлением данных."""
     user_id = callback.from_user.id
     update_last_activity(user_id)
     user_info = get_user_profile(user_id)
@@ -73,9 +71,10 @@ async def edit_survey(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery, state: FSMContext):
-    """Удаляет сообщение с профилем и возвращает пользователя в главное меню."""
     await state.clear()
+    update_user_state(callback.from_user.id, "Main Menu")
     await callback.message.delete()
+    await callback.message.answer("Переходим в главное меню")
     await show_menu(callback.message)
 
 def register_handlers(dp):
