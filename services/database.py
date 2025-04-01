@@ -1,6 +1,9 @@
 import psycopg2
 import datetime
+import logging
 from config import DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT
+from psycopg2.extras import execute_values
+
 
 PLATFORM_MAPPING = {
     "PlayStation 5": "PS5",
@@ -15,6 +18,7 @@ PLATFORM_MAPPING = {
 
 
 def connect_db():
+    """ Подключение к БД"""
     return psycopg2.connect(
         dbname=DB_NAME,
         user=DB_USER,
@@ -25,6 +29,7 @@ def connect_db():
 
 
 def save_survey(telegram_id, platform, genre, favorite_games):
+    """ Сохранение результатов анкеты """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -41,6 +46,7 @@ def save_survey(telegram_id, platform, genre, favorite_games):
     conn.close()
 
 def update_user_settings(user_id, **kwargs):
+    """ Обновление настроек рекомендаций """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -74,6 +80,7 @@ def update_user_settings(user_id, **kwargs):
 
 
 def user_exists(telegram_id):
+    """ Проверка на существование в базе (для анкеты) """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -85,6 +92,7 @@ def user_exists(telegram_id):
 
 
 def get_user_profile(telegram_id):
+    """ Получение данных о пользователе """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -110,6 +118,7 @@ def get_user_profile(telegram_id):
     return None
 
 def get_rated_games(user_id):
+    """ Получение списка оцененных игр """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -136,6 +145,7 @@ def get_rated_games(user_id):
 
 
 def update_game_rating(user_id, game_id, new_rating):
+    """ Обновление оценки игры """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -159,6 +169,7 @@ def update_game_rating(user_id, game_id, new_rating):
 
 
 def remove_game_rating(user_id, game_id):
+    """ Удаление оценки игры """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -180,6 +191,7 @@ def remove_game_rating(user_id, game_id):
     return True
 
 def get_favorite_games(user_id):
+    """ Получение списка избранных игр """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -205,6 +217,7 @@ def get_favorite_games(user_id):
 
 
 def remove_favorite_game(user_id, game_id):
+    """ Удаление игры из списка избранных """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -227,6 +240,7 @@ def remove_favorite_game(user_id, game_id):
 
 
 def get_not_interested_games(user_id):
+    """ Получение неинтересных игр """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -251,6 +265,7 @@ def get_not_interested_games(user_id):
 
 
 def remove_not_interested_game(user_id, game_id):
+    """ Удаление игры из списка неинтересных """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -273,6 +288,7 @@ def remove_not_interested_game(user_id, game_id):
 
 
 def get_recommendation_candidates(user_id):
+    """ Получение игр для рекомендаций из базы данных """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -331,6 +347,7 @@ def get_recommendation_candidates(user_id):
     return game_ids
 
 def add_recommendations(user_id, game_ids):
+    """ Добавление игр в пул рекомендаций пользователя """
     if not game_ids:
         return
 
@@ -352,13 +369,15 @@ def add_recommendations(user_id, game_ids):
     """
     values = [(real_user_id, game_id) for game_id in game_ids]
 
-    from psycopg2.extras import execute_values
+    logging.info(f"Добавление {len(game_ids)} игр в рекомендации для пользователя {user_id}")
+
     execute_values(cursor, query, values)
 
     conn.commit()
     conn.close()
 
 def update_recommendations(user_id):
+    """ Обновление пула рекомендаций пользователя """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -382,6 +401,8 @@ def update_recommendations(user_id):
 
 
 def get_recommendations(user_id, count):
+    """ Получение части игр из пула рекомендаций для показа """
+
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -416,10 +437,12 @@ def get_recommendations(user_id, count):
     games = cursor.fetchall()
     conn.close()
 
+    logging.info(f"Пользователь {user_id} получил {len(games)} рекомендаций")
     return games
 
 
 def add_to_viewed_games(user_id, game_ids):
+    """ Добавление игр в список просмотренных """
     if not game_ids:
         return
 
@@ -449,6 +472,7 @@ def add_to_viewed_games(user_id, game_ids):
     conn.close()
 
 def remove_from_recommendations(user_id, game_ids):
+    """ Удаление игр из пула рекомендаций """
     if not game_ids:
         return
 
@@ -473,6 +497,7 @@ def remove_from_recommendations(user_id, game_ids):
     conn.close()
 
 def update_last_activity(user_id):
+    """ Обновление активности пользователя """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET last_activity = NOW() WHERE telegram_id = %s", (user_id,))
@@ -481,6 +506,7 @@ def update_last_activity(user_id):
 
 
 def update_user_state(user_id, state: str):
+    """ Обновление текущего статуса пользователя """
     conn = connect_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET current_state = %s WHERE telegram_id = %s", (state, user_id))

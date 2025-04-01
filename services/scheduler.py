@@ -7,10 +7,12 @@ from handlers.menu import show_menu
 from services import game_card
 from services.game_api import fetch_games
 from services.game_db import GameDatabase
+import logging
 
 db = GameDatabase()
 
 async def check_inactive_users(bot: Bot, dp: Dispatcher):
+    """ Проверяет неактивных пользователей и возвращает их в главное меню """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -25,6 +27,7 @@ async def check_inactive_users(bot: Bot, dp: Dispatcher):
 
     for user in inactive_users:
         user_id = user[0]
+        logging.info(f"Пользователь {user_id} был неактивен более 60 минут, переводим в главное меню")
 
         state = dp.fsm.get_context(bot, user_id, user_id)
 
@@ -46,6 +49,7 @@ async def check_inactive_users(bot: Bot, dp: Dispatcher):
 
 
 async def send_scheduled_recommendations(bot):
+    """ Отправляет запланированные рекомендации пользователям """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -55,7 +59,7 @@ async def send_scheduled_recommendations(bot):
     """)
     users = cursor.fetchall()
 
-    current_time = datetime.now()
+    current_time = datetime.datetime.now()
 
     for user_id, last_notification in users:
         user_settings = get_user_profile(user_id)
@@ -80,6 +84,8 @@ async def send_scheduled_recommendations(bot):
         if (current_time - last_notification) < delta:
             continue  # Уведомление пока не должно отправляться
 
+        logging.info(f"Отправляем интервальные рекомендации пользователю {user_id}")
+
         recommended_games = get_recommendations(user_id, notif_count)
         if len(recommended_games) < notif_count:
             update_recommendations(user_id)
@@ -98,46 +104,8 @@ async def send_scheduled_recommendations(bot):
 
     conn.close()
 
-async def update_game_database():
-    today = datetime.today().date()
-    week_ago = today - timedelta(days=7)
-
-    async for platform_name, platform_id in db.get_all_platforms():
-        page = 1
-        while True:
-            data = await fetch_games(platform_id, page)
-            if not data or "results" not in data:
-                break
-
-            for game in data["results"]:
-                release_date = game.get("released")
-                genres = game.get("genres", [])
-
-                if not release_date or not genres:
-                    continue
-
-                release_date = datetime.strptime(release_date, "%Y-%m-%d").date()
-                if release_date < week_ago or release_date > today:
-                    continue
-
-                db.insert_game(
-                    title=game["name"],
-                    release_date=release_date,
-                    metascore=game.get("metacritic"),
-                    cover_url=game.get("background_image")
-                )
-
-                for genre in genres:
-                    db.insert_genre(genre["name"])
-                    db.link_game_genre(game["name"], genre["name"])
-
-                db.insert_platform(platform_name)
-                db.link_game_platform(game["name"], platform_name)
-
-            page += 1
-
-
 async def clear_viewed_games():
+    """ Очищает таблицу просмотренных игр """
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -145,4 +113,5 @@ async def clear_viewed_games():
     conn.commit()
     conn.close()
 
-    print("✅ Таблица viewed_games очищена.")
+    logging.info("Таблица viewed_games очищена.")
+

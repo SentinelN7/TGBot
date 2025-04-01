@@ -7,6 +7,7 @@ from services.database import connect_db, update_recommendations, update_last_ac
 from services.game_api import fetch_game_details
 from handlers.menu import show_menu
 from services import game_card
+import logging
 
 router = Router()
 
@@ -25,7 +26,10 @@ search_keyboard = ReplyKeyboardMarkup(
 
 @router.message(lambda msg: msg.text == "🔍 Поиск игры")
 async def start_search(message: Message, state: FSMContext):
+    """ Запускает режим поиска игр """
     update_user_state(message.from_user.id, "Search")
+    user_id = message.from_user.id
+    logging.info(f"Пользователь {user_id} начал поиск игры")
     intro_text = (
         "🔎 *Вы в режиме поиска игр*\n\n"
         "Здесь вы сможете найти нужную вам игру из огромного массива игр, "
@@ -44,22 +48,29 @@ async def start_search(message: Message, state: FSMContext):
 
 @router.message(lambda msg: msg.text == "🔄 Поиск новой игры")
 async def restart_search(message: Message, state: FSMContext):
+    """ Обработчик кнопки для поиска новой игры """
     await start_new_search(message, state)
 
 @router.message(lambda msg: msg.text == "🔙 Вернуться в главное меню")
 async def exit_search_mode(message: Message, state: FSMContext):
+    """ Обработчик кнопки выхода в главное меню """
     await state.clear()
     update_user_state(message.from_user.id, "Main Menu")
     await show_menu(message)
 
 async def start_new_search(message: Message, state: FSMContext):
+    """ Начало поиска """
     update_last_activity(message.from_user.id)
     await message.answer("Введите название игры для поиска:")
     await state.set_state(SearchGame.waiting_for_search_query)
 
 @router.message(SearchGame.waiting_for_search_query)
 async def process_search(message: Message, state: FSMContext):
+    """ Обрабатывает введённый пользователем запрос на поиск игры """
+    user_id = message.from_user.id
     search_query = message.text.strip().lower()
+
+    logging.info(f"Пользователь {user_id} ищет игру: {search_query}")
 
     try:
         conn = connect_db()
@@ -75,11 +86,13 @@ async def process_search(message: Message, state: FSMContext):
         conn.close()
 
         if not games:
+            logging.info(f"Пользователь {user_id}: игра '{search_query}' не найдена")
             await message.answer("❌ Игр с таким названием не найдено. Попробуйте еще раз.")
             return
 
         if len(games) == 1:
             game_id, game_title = games[0]
+            logging.info(f"Пользователь {user_id} нашёл единственную игру: {game_title} (ID {game_id})")
             await game_card.show_game_message(message, game_id)
             await state.clear()
             return
@@ -90,24 +103,34 @@ async def process_search(message: Message, state: FSMContext):
             response += f"{index}. {game_title}\n"
             game_options[str(index)] = game_id
 
+        logging.info(f"Пользователь {user_id} получил список игр на выбор ({len(games)} результатов)")
+
         await state.update_data(game_options=game_options)
         await message.answer(response + "\nОтправьте номер нужной игры.")
         await state.set_state(SearchGame.waiting_for_game_selection)
 
     except Exception as e:
+        logging.error(f"Ошибка при поиске игры у пользователя {user_id}: {e}")
         await message.answer("❌ Произошла ошибка при поиске. Попробуйте позже.")
 
 @router.message(SearchGame.waiting_for_game_selection)
 async def select_game(message: Message, state: FSMContext):
-    update_last_activity(message.from_user.id)
+    """ Обрабатывает выбор игры пользователем """
+    user_id = message.from_user.id
+    update_last_activity(user_id)
+
     user_data = await state.get_data()
     game_options = user_data.get("game_options", {})
 
     if message.text not in game_options:
+        logging.warning(f"Пользователь {user_id} ввёл некорректный номер игры: {message.text}")
         await message.answer("Некорректный ввод. Введите номер игры из списка или отмените поиск.")
         return
 
     game_id = game_options[message.text]
+    logging.info(f"Пользователь {user_id} выбрал игру (ID {game_id})")
+
+    await message.answer("Формирую красоту для тебя, подожди чуток...")
     await game_card.show_game_message(message, game_id)
     await state.clear()
 

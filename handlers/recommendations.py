@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.fsm.state import State, StatesGroup
@@ -8,7 +9,6 @@ from services.database import *
 from handlers.menu import show_menu
 from services.game_api import fetch_game_details
 from services import game_card
-
 
 router = Router()
 
@@ -40,9 +40,13 @@ def generate_recommendation_menu(user_settings):
 
 @router.message(lambda msg: msg.text == "⭐ Рекомендации")
 async def recommendations_menu(message: Message, state: FSMContext):
-    update_last_activity(message.from_user.id)
-    update_user_state(message.from_user.id, "Recommendations")
-    user_settings = get_user_profile(message.from_user.id)
+    """ Открывает меню рекомендаций для пользователя """
+    user_id = message.from_user.id
+    logging.info(f"Пользователь {user_id} открыл меню рекомендаций")
+
+    update_last_activity(user_id)
+    update_user_state(user_id, "Recommendations")
+    user_settings = get_user_profile(user_id)
 
     text, keyboard = generate_recommendation_menu(user_settings)
 
@@ -58,6 +62,7 @@ async def recommendations_menu(message: Message, state: FSMContext):
 @router.message(lambda msg: msg.text == "🔙 Вернуться в главное меню")
 @router.callback_query(lambda c: c.data == "back_to_menu")
 async def back_to_menu(event: CallbackQuery | Message, state: FSMContext):
+    """ Возврат в главное меню"""
     await state.clear()
     update_user_state(event.from_user.id, "Main Menu")
 
@@ -81,17 +86,22 @@ def get_recommendations_keyboard():
 @router.callback_query(lambda c: c.data == "get_recommendations")
 @router.message(RecommendationState.viewing, lambda msg: msg.text == "🔄 Получить новые рекомендации")
 async def show_recommendations(event: CallbackQuery | Message, state: FSMContext):
+    """ Вывод рекомендаций для пользователя """
     user_id = event.from_user.id
+    logging.info(f"Пользователь {user_id} запросил рекомендации")
+
     update_last_activity(user_id)
     user_settings = get_user_profile(user_id)
     rec_count = user_settings.get("rec_count", 3)
     recommended_games = get_recommendations(user_id, rec_count)
 
     if len(recommended_games) < rec_count:
+        logging.info(f"Пользователь {user_id}: рекомендаций меньше {rec_count}, обновляем список")
         update_recommendations(user_id)
-        recommended_games = get_recommendations(user_id)
+        recommended_games = get_recommendations(user_id, rec_count)
 
     if not recommended_games:
+        logging.info(f"Пользователь {user_id} не получил рекомендаций")
         message_text = "😕 Пока нет рекомендаций. Попробуйте позже!"
         if isinstance(event, CallbackQuery):
             await event.message.answer(message_text)
@@ -106,6 +116,8 @@ async def show_recommendations(event: CallbackQuery | Message, state: FSMContext
         message = event.message if isinstance(event, CallbackQuery) else event
         await game_card.show_game_message(message, game_id, from_recommendations=True)
 
+    logging.info(f"Пользователь {user_id} получил {len(game_ids)} рекомендаций: {game_ids}")
+
     add_to_viewed_games(user_id, game_ids)
     remove_from_recommendations(user_id, game_ids)
     await state.set_state(RecommendationState.viewing)
@@ -119,6 +131,7 @@ async def show_recommendations(event: CallbackQuery | Message, state: FSMContext
 
 @router.message(RecommendationState.viewing, lambda msg: msg.text == "🔄 Получить новые рекомендации")
 async def refresh_recommendations(message: Message, state: FSMContext):
+    """ Вывод новых рекомендаций """
     await show_recommendations(message, state)
 
 
@@ -151,8 +164,12 @@ def generate_settings_keyboard(user_settings):
 
 @router.callback_query(lambda c: c.data == "recommendations_settings")
 async def show_settings_menu(callback: CallbackQuery):
-    user_settings = get_user_profile(callback.from_user.id)
-    update_last_activity(callback.from_user.id)
+    """ Открывает меню настроек рекомендаций """
+    user_id = callback.from_user.id
+    logging.info(f"Пользователь {user_id} открыл настройки рекомендаций")
+
+    user_settings = get_user_profile(user_id)
+    update_last_activity(user_id)
 
     await callback.message.edit_text(
         "🔧 *Выберите параметр для изменения:*",
@@ -162,7 +179,11 @@ async def show_settings_menu(callback: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("edit_"))
 async def edit_setting(callback: CallbackQuery):
+    """ Настройка выбранного параметра """
+    user_id = callback.from_user.id
     param = callback.data.replace("edit_", "")
+
+    logging.info(f"Пользователь {user_id} выбрал редактирование параметра: {param}")
 
     if param not in OPTIONS:
         await callback.answer(f"Ошибка: неизвестный параметр ({param}).", show_alert=True)
@@ -177,10 +198,13 @@ async def edit_setting(callback: CallbackQuery):
 
 @router.callback_query(lambda c: c.data.startswith("set_"))
 async def update_setting(callback: CallbackQuery):
+    """ Обновляет выбранный параметр настроек рекомендаций """
     user_id = callback.from_user.id
     _, param_value = callback.data.split("_", maxsplit=1)
 
     param, _, value = param_value.rpartition("_")
+
+    logging.info(f"Пользователь {user_id} изменил параметр {param} на {value}")
 
     if param in {"rec_count", "notif_count"}:
         try:
@@ -200,6 +224,7 @@ async def update_setting(callback: CallbackQuery):
 @router.message(lambda msg: msg.text == "📌 Вернуться в меню рекомендаций")
 @router.callback_query(lambda c: c.data == "back_to_recommendations")
 async def back_to_recommendations(event: CallbackQuery | Message, state: FSMContext):
+    """ Возврат в меню реокмендаций """
     await state.clear()
     user_settings = get_user_profile(event.from_user.id)
     text, keyboard = generate_recommendation_menu(user_settings)

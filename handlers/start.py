@@ -5,13 +5,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from services.database import save_survey, get_user_profile, update_recommendations, user_exists, update_user_state
 from handlers.menu import show_menu
+import logging
 
 router = Router()
 
 user_data = {}
 
 PLATFORMS = ["PlayStation 5", "PlayStation 4", "PlayStation 3", "Xbox Series X/S", "Xbox One", "Xbox 360", "PC", "Nintendo Switch"]
-GENRES = ["Action", "RPG", "Shooter", "Strategy", "Simulator", "Arcade", "Fighting", "Adventure", "Puzzle"]
+GENRES = ["Action", "RPG", "Shooter", "Strategy", "Simulation", "Arcade", "Fighting", "Adventure", "Puzzle"]
 
 class SurveyStates(StatesGroup):
     choosing_platform = State()
@@ -30,8 +31,10 @@ def generate_survey_keyboard(user_id):
 
 @router.message(Command("start"))
 async def start_command(message: Message, state: FSMContext, edit: bool = False):
+    """ Обрабатывает команду /start, отправляет анкету или меню """
     user_id = message.from_user.id
     update_user_state(user_id, "Survey")
+    logging.info(f"Пользователь {user_id} отправил команду /start или перешел к редактированию анкеты")
 
     if not edit and user_exists(user_id):
         username = message.from_user.first_name
@@ -60,8 +63,12 @@ async def choose_platform(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data.startswith("set_platform:"))
 async def set_platform(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
     platform = callback.data.split(":")[1]
-    user_data[callback.from_user.id]["platform"] = platform
+    user_data[user_id]["platform"] = platform
+
+    logging.info(f"Пользователь {user_id} выбрал платформу: {platform}")
+
     await callback.message.edit_text("📋 Анкета", reply_markup=generate_survey_keyboard(callback.from_user.id))
     await state.clear()
 
@@ -75,8 +82,12 @@ async def choose_genre(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(lambda c: c.data.startswith("set_genre:"))
 async def set_genre(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
     genre = callback.data.split(":")[1]
-    user_data[callback.from_user.id]["genre"] = genre
+    user_data[user_id]["genre"] = genre
+
+    logging.info(f"Пользователь {user_id} выбрал жанр: {genre}")
+
     await callback.message.edit_text("📋 Анкета", reply_markup=generate_survey_keyboard(callback.from_user.id))
     await state.clear()
 
@@ -87,12 +98,17 @@ async def choose_games(callback: CallbackQuery, state: FSMContext):
 
 @router.message(SurveyStates.entering_favorite_games)
 async def set_games(message: Message, state: FSMContext):
-    user_data[message.from_user.id]["games"] = message.text
+    user_id = message.from_user.id
+    user_data[user_id]["games"] = message.text
+
+    logging.info(f"Пользователь {user_id} указал любимые игры: {message.text}")
+
     await message.answer("📋 Анкета", reply_markup=generate_survey_keyboard(message.from_user.id))
     await state.clear()
 
 @router.callback_query(lambda c: c.data == "finish_survey")
 async def finish_survey(callback: CallbackQuery):
+    user_id = callback.from_user.id
     data = user_data.get(callback.from_user.id, {})
     if data.get("platform") == "не выбрано":
         await callback.answer("⚠️ Сначала выберите платформу!", show_alert=True)
@@ -102,13 +118,13 @@ async def finish_survey(callback: CallbackQuery):
         return
 
     save_survey(
-        telegram_id=callback.from_user.id,
+        telegram_id=user_id,
         platform=data.get("platform", ""),
         genre=data.get("genre", ""),
         favorite_games=data.get("games", "")
     )
 
-    user_id = callback.from_user.id
+    logging.info(f"Пользователь {user_id} завершил анкету: {data}")
     update_recommendations(user_id)
 
 

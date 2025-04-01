@@ -1,5 +1,6 @@
 import aiohttp
 import requests
+import logging
 from io import BytesIO
 from PIL import Image
 from aiogram import Router, types, Bot
@@ -17,6 +18,7 @@ class ShowingGame(StatesGroup):
 
 
 async def process_game_image(cover_url: str):
+    """ Обработка изображений (обложек игр) """
     if not cover_url:
         return None
 
@@ -49,6 +51,9 @@ async def process_game_image(cover_url: str):
 
 
 async def show_game_message(message: Message, game_id: int, from_recommendations=False):
+    """ Отображает карточку игры пользователю (только для игр из поиска и списка рекомендаций) """
+    user_id = message.from_user.id
+
     try:
         conn = connect_db()
         cursor = conn.cursor()
@@ -74,13 +79,16 @@ async def show_game_message(message: Message, game_id: int, from_recommendations
         conn.close()
 
         if not game:
+            logging.warning(f"Игра (ID {game_id}) не найдена в базе")
             await message.answer("❌ Произошла ошибка. Игра не найдена в базе.")
             return
 
         title, release_date, genre, platforms, rating, cover_url = game
+        logging.info(f"Пользователь {user_id} получил карточку игры: {title}")
 
         details = await fetch_game_details(title)
         if not details:
+            logging.error(f"Ошибка загрузки деталей игры: {title}")
             await message.answer("❌ Ошибка загрузки информации.")
             return
 
@@ -115,11 +123,12 @@ async def show_game_message(message: Message, game_id: int, from_recommendations
             await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
     except Exception as e:
-        print(f"Ошибка в show_game_message: {e}")
+        logging.error(f"Ошибка в show_game_message у пользователя {user_id}: {e}")
         await message.answer("❌ Ошибка при загрузке информации об игре.")
 
 
 async def show_game_bot(user_id: int, game_id: int, bot):
+    """ Отображает карточку игры пользователю (только для игр из интервальных рекомендаций) """
     try:
         conn = connect_db()
         cursor = conn.cursor()
@@ -183,14 +192,16 @@ async def show_game_bot(user_id: int, game_id: int, bot):
             await bot.send_message(user_id, text, reply_markup=keyboard, parse_mode="HTML")
 
     except Exception as e:
-        print(f"Ошибка в show_game_bot: {e}")
+        logging.error(f"Ошибка в show_game_bot у пользователя {user_id}: {e}")
         await bot.send_message(user_id, "❌ Ошибка при загрузке информации об игре.")
 
 
 @router.callback_query(lambda c: c.data.startswith("favorite_"))
 async def add_to_favorites(callback: CallbackQuery):
+    """ Добавляет игру в избранное пользователя """
     game_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
+    logging.info(f"Пользователь {user_id} добавляет в избранное игру (ID {game_id})")
 
     conn = connect_db()
     cursor = conn.cursor()
@@ -203,6 +214,7 @@ async def add_to_favorites(callback: CallbackQuery):
     game_title = game_record[0]
 
     if already_favorited:
+        logging.info(f"Пользователь {user_id} пытался добавить в избранное уже ранее добавленную игру: {game_title}")
         await callback.message.answer(f"❌ Игра {game_title} уже в вашем избранном!")
         conn.close()
         return
@@ -211,13 +223,19 @@ async def add_to_favorites(callback: CallbackQuery):
     conn.commit()
     conn.close()
 
+    logging.info(f"Игра {game_title} добавлена в избранное пользователем {user_id}")
     await callback.message.answer(f"✅ Игра {game_title} добавлена в избранное!")
     update_recommendations(user_id)
 
 
 @router.callback_query(lambda c: c.data.startswith("rate_"))
 async def rate_game(callback: CallbackQuery, state: FSMContext):
+    """ Запрашивает у пользователя оценку игры """
+    user_id = callback.from_user.id
     game_id = int(callback.data.split("_")[1])
+
+    logging.info(f"Пользователь {user_id} хочет оценить игру (ID {game_id})")
+
     await state.update_data(game_id=game_id)
     await callback.answer()
     await callback.message.answer("Введите оценку от 1 до 10:")
@@ -226,18 +244,20 @@ async def rate_game(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ShowingGame.waiting_for_rating)
 async def process_rating(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    """ Сохраняет оценку игры """
     try:
         rating = int(message.text)
         if rating < 1 or rating > 10:
             raise ValueError
     except ValueError:
+        logging.warning(f"Пользователь {user_id} ввёл некорректную оценку: {message.text}")
         await message.answer("Некорректный ввод. Введите число от 1 до 10.")
         return
 
     user_data = await state.get_data()
     game_id = user_data.get("game_id")
-    user_id = message.from_user.id
-
+    
     conn = connect_db()
     cursor = conn.cursor()
 
@@ -262,17 +282,19 @@ async def process_rating(message: Message, state: FSMContext):
         conn.close()
 
         await message.answer(f"Вы оценили игру {game_title} на {rating}/10.")
+        logging.info(f"Пользователь {user_id} оценил игру {game_title} (ID {game_id}) на {rating}/10")
         update_recommendations(user_id)
     else:
         conn.close()
-        await message.answer("Ошибка: не удалось найти ваш профиль.")
 
     await state.clear()
 
 @router.callback_query(lambda c: c.data.startswith("not_interested_"))
 async def mark_not_interested(callback: CallbackQuery):
+    """ Добавляет игру в список неинтересных пользователю """
     game_id = int(callback.data.split("_")[2])
     user_id = callback.from_user.id
+    logging.info(f"Пользователь {user_id} добавляет в неинтересные игру (ID {game_id})")
 
     conn = connect_db()
     cursor = conn.cursor()
@@ -280,13 +302,14 @@ async def mark_not_interested(callback: CallbackQuery):
     cursor.execute(
         "SELECT 1 FROM not_interested_games WHERE user_id = (SELECT id FROM users WHERE telegram_id = %s) AND game_id = %s",
         (user_id, game_id))
-    already_favorited = cursor.fetchone()
+    already_not_interested = cursor.fetchone()
 
     cursor.execute("SELECT title FROM games WHERE id = %s", (game_id,))
     game_record = cursor.fetchone()
     game_title = game_record[0]
 
-    if already_favorited:
+    if already_not_interested:
+        logging.info(f"Пользователь {user_id} пытался добавить в неинтересные уже ранее добавленную игру: {game_title}")
         await callback.message.answer(f"❌ Игра {game_title} уже помечена как неинтересная!")
         conn.close()
         return
@@ -297,6 +320,7 @@ async def mark_not_interested(callback: CallbackQuery):
     conn.commit()
     conn.close()
 
+    logging.info(f"Игра {game_title} добавлена в неинтересные пользователем {user_id}")
     await callback.message.answer(f"✅ Игра {game_title} больше не будет вам рекомендоваться!")
     update_recommendations(user_id)
 
